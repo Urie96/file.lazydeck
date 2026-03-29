@@ -1,5 +1,6 @@
 local M = {}
 
+local actions = require 'file.actions'
 local config = require 'file.config'
 local metas = require 'file.metas'
 
@@ -18,6 +19,8 @@ local function sort_entries(entries)
   end)
   return entries
 end
+
+local function is_hidden(name) return type(name) == 'string' and name:sub(1, 1) == '.' end
 
 local function fs_path_from_page_path(path)
   local segments = {}
@@ -39,6 +42,7 @@ end
 
 local function display_entry(name, is_dir)
   return line {
+    span ' ',
     span(name, is_dir and 'blue' or 'white'),
   }
 end
@@ -65,10 +69,14 @@ local function build_entries(path)
 
   entries = sort_entries(entries or {})
   local out = {}
+  local show_hidden = config.get().show_hidden
 
   for _, entry in ipairs(entries) do
-    local child_fs_path = current_fs_path == '/' and ('/' .. entry.name)
-      or (current_fs_path .. '/' .. entry.name)
+    if not show_hidden and is_hidden(entry.name) then goto continue end
+    local child_fs_path = current_fs_path == '/' and ('/' .. entry.name) or (current_fs_path .. '/' .. entry.name)
+    local marker_color = actions.marker_color(child_fs_path)
+    local marker = span ' '
+    if marker_color then marker = marker:bg(marker_color) end
     table.insert(out, {
       key = entry.name,
       kind = entry.is_dir and 'dir' or 'file',
@@ -76,21 +84,23 @@ local function build_entries(path)
       path = child_fs_path,
       path_parts = page_path_for_child(path, entry.name),
       is_dir = entry.is_dir,
-      display = display_entry(entry.name, entry.is_dir),
+      display = line {
+        marker,
+        span(entry.name, entry.is_dir and 'blue' or 'white'),
+      },
     })
+    ::continue::
   end
 
-  if #out == 0 then
-    table.insert(out, info_entry('empty', 'Empty directory'))
-  end
+  if #out == 0 then table.insert(out, info_entry('empty', 'Empty directory')) end
 
   return out
 end
 
 function M.setup(opt) config.setup(opt or {}) end
 
-function M.list(path, cb)
-  cb(metas.attach_all(build_entries(path)))
-end
+function M.list(path, cb) cb(metas.attach_all(build_entries(path))) end
+
+M.copy_hovered_entry = actions.copy_hovered_entry
 
 return M

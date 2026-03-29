@@ -1,72 +1,59 @@
 local M = {}
 
+local actions = require 'file.actions'
 local config = require 'file.config'
 local preview = require 'file.preview'
 
-local function preview_method(renderer)
-  return function(self, cb) cb(renderer(self)) end
+local function toggle_hidden()
+  local show_hidden = config.toggle_hidden()
+  lc.cmd 'reload'
+  return show_hidden
 end
-
-local function add_keymap(map, key, callback, desc)
-  if key and key ~= '' then map[key] = { callback = callback, desc = desc } end
-end
-
-local function open_directory(self) lc.api.go_to(self.path_parts or {}) end
-
-local function refresh_preview(self)
-  local renderer = self.is_dir and preview.dir_preview or preview.file_preview
-  lc.api.page_set_preview(renderer(self))
-end
-
-local function entry_keymap(self)
-  local map = {}
-  local keymap = config.get().keymap
-
-  if self.is_dir then
-    add_keymap(map, keymap.open, function() open_directory(self) end, 'enter directory')
-    add_keymap(map, keymap.enter, function() open_directory(self) end, 'enter directory')
-  else
-    add_keymap(map, keymap.open, function() refresh_preview(self) end, 'refresh preview')
-    add_keymap(map, keymap.enter, function() refresh_preview(self) end, 'refresh preview')
-  end
-
-  return map
-end
-
-local function info_keymap()
-  local map = {}
-  local keymap = config.get().keymap
-  add_keymap(map, keymap.open, function() end, 'no action')
-  add_keymap(map, keymap.enter, function() end, 'no action')
-  return map
-end
-
-local dir_mt = {
-  __index = function(self, key)
-    if key == 'preview' then return preview_method(preview.dir_preview) end
-    if key == 'keymap' then return entry_keymap(self) end
-  end,
-}
-
-local file_mt = {
-  __index = function(self, key)
-    if key == 'preview' then return preview_method(preview.file_preview) end
-    if key == 'keymap' then return entry_keymap(self) end
-  end,
-}
-
-local info_mt = {
-  __index = function(self, key)
-    if key == 'preview' then return preview_method(preview.info_preview) end
-    if key == 'keymap' then return info_keymap() end
-  end,
-}
 
 local metatables = {
-  dir = dir_mt,
-  file = file_mt,
-  info = info_mt,
+  dir = {
+    __index = {
+      preview = preview.dir_preview,
+      keymap = {},
+    },
+  },
+  file = {
+    __index = {
+      preview = preview.file_preview,
+      keymap = {},
+    },
+  },
+  info = {
+    __index = {
+      preview = preview.info_preview,
+      keymap = {},
+    },
+  },
 }
+
+local function add_keymap(maps, key, callback, desc)
+  if key and key ~= '' then
+    for _, map in ipairs(maps) do
+      map[key] = { callback = callback, desc = desc }
+    end
+  end
+end
+
+function M.setup(cfg)
+  local keymap = cfg.keymap
+  local dir_keymap = metatables.dir.__index.keymap
+  local file_keymap = metatables.file.__index.keymap
+  local info_keymap = metatables.info.__index.keymap
+  local dir_and_file_keymap = { dir_keymap, file_keymap }
+  local all_keymap = { dir_keymap, file_keymap, info_keymap }
+  add_keymap(all_keymap, keymap.new_file, actions.create_file, 'new file')
+  add_keymap(all_keymap, keymap.new_dir, actions.create_dir, 'new directory')
+  add_keymap(all_keymap, keymap.toggle_hidden, toggle_hidden, 'toggle hidden files')
+  add_keymap(dir_and_file_keymap, keymap.select, actions.select_hovered_entry, 'select entry')
+  add_keymap(dir_and_file_keymap, keymap.yank, actions.copy_hovered_entry, 'copy entry')
+  add_keymap(dir_and_file_keymap, keymap.cut, actions.cut_hovered_entry, 'cut entry')
+  add_keymap(dir_and_file_keymap, keymap.delete, actions.delete_hovered_entry, 'delete entry')
+end
 
 function M.attach_all(entries)
   local out = {}

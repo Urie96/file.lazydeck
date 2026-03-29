@@ -2,6 +2,10 @@ local M = {}
 
 local config = require 'file.config'
 
+local runtime = {
+  preview_token = 0,
+}
+
 local CODE_EXTENSIONS = {
   c = true,
   cc = true,
@@ -56,10 +60,19 @@ local function sort_entries(entries)
   return entries
 end
 
+local function is_hidden(name) return type(name) == 'string' and name:sub(1, 1) == '.' end
+
 local function read_children(path)
   local entries, err = lc.fs.read_dir_sync(path)
   if err then return nil, err end
-  return sort_entries(entries or {})
+  entries = sort_entries(entries or {})
+  if config.get().show_hidden then return entries end
+
+  local visible = {}
+  for _, entry in ipairs(entries) do
+    if not is_hidden(entry.name) then table.insert(visible, entry) end
+  end
+  return visible
 end
 
 local function language_for(name)
@@ -73,18 +86,14 @@ end
 
 local function directory_lines(path)
   local entries, err = read_children(path)
-  if err then
-    return {
-      line { span('Failed to read directory', 'red') },
-      line { span(err, 'red') },
-    }
-  end
+  if err then return {
+    line { span('Failed to read directory', 'red') },
+    line { span(err, 'red') },
+  } end
 
-  if #entries == 0 then
-    return {
-      line { span('Empty directory', 'darkgray') },
-    }
-  end
+  if #entries == 0 then return {
+    line { span('Empty directory', 'darkgray') },
+  } end
 
   local lines = {
     line { span(path, 'cyan') },
@@ -93,28 +102,31 @@ local function directory_lines(path)
   }
 
   for _, entry in ipairs(entries) do
-    table.insert(lines, line {
-      span(entry.name, entry.is_dir and 'blue' or 'white'),
-    })
+    table.insert(
+      lines,
+      line {
+        span(entry.name, entry.is_dir and 'blue' or 'white'),
+      }
+    )
   end
 
   return lines
 end
 
-local function truncate_content(content)
-  local max_chars = config.get().preview_max_chars
-  if #content <= max_chars then return content, false end
-  return content:sub(1, max_chars), true
+local function next_preview_token()
+  runtime.preview_token = runtime.preview_token + 1
+  return runtime.preview_token
 end
 
-local function read_file_preview(path)
-  local content, err = lc.fs.read_file_sync(path)
-  if err then
-    return text {
-      line { span('Failed to read file', 'red') },
-      line { span(err, 'red') },
-    }
-  end
+local function is_latest_preview_token(token) return runtime.preview_token == token end
+
+local function is_current_hover(entry) return lc.deep_equal(entry.path_parts or {}, lc.api.get_hovered_path() or {}) end
+
+local function render_file_preview(path, content, err, meta)
+  if err then return text {
+    line { span('Failed to read file', 'red') },
+    line { span(err, 'red') },
+  } end
 
   if content:find('\0', 1, true) then
     return text {
@@ -123,36 +135,53 @@ local function read_file_preview(path)
     }
   end
 
-  local truncated
-  content, truncated = truncate_content(content)
+  local truncated = meta and meta.truncated == true
   local language = language_for(path:match '[^/]+$' or path)
 
   if truncated then
-    if language then return lc.style.highlight(content, language) end
-    return text {
-      line { span('Preview truncated', 'yellow') },
-      line { span(path, 'cyan') },
-      line { '' },
-      content,
-    }
+    if language then
+      local highlighted = lc.style.highlight(content, language)
+      highlighted:append ''
+      highlighted:append(line { span('Preview truncated', 'yellow') })
+      return highlighted
+    end
+    local plain = text { content }
+    plain:append ''
+    plain:append(line { span('Preview truncated', 'yellow') })
+    return plain
   end
 
   if language then return lc.style.highlight(content, language) end
   return text { content }
 end
 
-function M.dir_preview(entry)
-  return text(directory_lines(entry.path))
+function M.dir_preview(entry, cb)
+  next_preview_token()
+  cb(text(directory_lines(entry.path)))
 end
 
-function M.file_preview(entry)
-  return read_file_preview(entry.path)
+function M.file_preview(entry, cb)
+  local token = next_preview_token()
+  local language = language_for(entry.path:match '[^/]+$' or entry.path)
+  if not language then
+    cb(text {
+      line { span('No preview for this file type', 'darkgray') },
+    })
+    return
+  end
+
+  lc.fs.read_file(entry.path, { max_chars = config.get().preview_max_chars }, function(content, err, meta)
+    if not is_latest_preview_token(token) then return end
+    if not is_current_hover(entry) then return end
+    cb(render_file_preview(entry.path, content, err, meta))
+  end)
 end
 
-function M.info_preview(entry)
-  return text {
+function M.info_preview(entry, cb)
+  next_preview_token()
+  cb(text {
     line { span(entry.message or 'file', entry.color or 'darkgray') },
-  }
+  })
 end
 
 return M
