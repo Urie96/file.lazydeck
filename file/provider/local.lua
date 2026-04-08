@@ -100,7 +100,7 @@ function M:read_file(handle, opts, cb)
 end
 
 function M:edit(handle)
-  lc.interactive({ 'sh', '-lc', '${VISUAL:-${EDITOR:-vi}} "$1"', 'sh', handle.path })
+  lc.system.edit({ path = handle.path })
 end
 
 function M:create_file(dir_handle, name, cb)
