@@ -1,4 +1,4 @@
-# file.lazycmd
+# file.lazydeck
 
 本地文件浏览插件。
 
@@ -11,7 +11,7 @@
 - 文件项不会继续被当作目录进入，右键/回车只会刷新预览
 - `n`：在当前目录创建新文件，创建成功后会自动 hover 到新文件
 - `N`：在当前目录创建新文件夹，创建成功后会自动 hover 到新文件夹
-- `e`：通过 `lc.system.edit` 用外部编辑器编辑当前文件（优先 `$VISUAL`，其次 `$EDITOR`，默认 `vi`）
+- `e`：通过 `deck.system.edit` 用外部编辑器编辑当前文件（优先 `$VISUAL`，其次 `$EDITOR`，默认 `vi`）
 - `r`：重命名当前文件或目录
 - `Space`：切换当前 hovered 条目的选中状态，并在刷新后自动下移一项；选中标记显示为彩色 `▌`
 - `.`：切换是否显示隐藏文件
@@ -21,17 +21,17 @@
 - `p`：在当前 `/file/...` 目录中粘贴刚才复制的文件或目录
 - 预览区域：
   - 目录：展示子文件列表
-  - 常见代码文件：异步读取后使用 `lc.style.highlight` 语法高亮
+  - 常见代码文件：异步读取后使用 `deck.style.highlight` 语法高亮
   - 其他文本文件：纯文本展示
   - 文件预览只加载配置的最大字符数，不会在向下滚动时继续读取更多内容
 
 ## 配置
 
-在 `~/.config/lazycmd/init.lua` 中加入：
+在 `~/.config/lazydeck/init.lua` 中加入：
 
 ```lua
 {
-  dir = 'plugins/file.lazycmd',
+  dir = 'plugins/file.lazydeck',
   config = function()
     require('file').setup()
   end,

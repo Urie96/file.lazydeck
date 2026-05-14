@@ -38,13 +38,13 @@ local SPECIAL_FILENAMES = {
 }
 
 local function span(text, color)
-  local s = lc.style.span(tostring(text or ''))
+  local s = deck.style.span(tostring(text or ''))
   if color and color ~= '' then s = s:fg(color) end
   return s
 end
 
-local function line(parts) return lc.style.line(parts) end
-local function text(lines) return lc.style.text(lines) end
+local function line(parts) return deck.style.line(parts) end
+local function text(lines) return deck.style.text(lines) end
 
 local function sort_handles(handles)
   table.sort(handles, function(a, b)
@@ -85,7 +85,7 @@ local function render_file_preview(path, content, err, meta)
 
   if truncated then
     if language then
-      local highlighted = lc.style.highlight(content, language)
+      local highlighted = deck.style.highlight(content, language)
       highlighted:append ''
       highlighted:append(line { span('Preview truncated', 'yellow') })
       return highlighted
@@ -96,7 +96,7 @@ local function render_file_preview(path, content, err, meta)
     return plain
   end
 
-  if language then return lc.style.highlight(content, language) end
+  if language then return deck.style.highlight(content, language) end
   return text { content }
 end
 
@@ -118,7 +118,7 @@ function M:is_latest_preview_token(token)
 end
 
 function M:is_current_hover(entry)
-  return lc.deep_equal(entry.path_parts or {}, lc.api.get_hovered_path() or {})
+  return deck.deep_equal(entry.path_parts or {}, deck.api.get_hovered_path() or {})
 end
 
 function M:run_debounced(entry, cb, work)
@@ -136,7 +136,7 @@ function M:run_debounced(entry, cb, work)
     return token
   end
 
-  lc.defer_fn(run, delay)
+  deck.defer_fn(run, delay)
   return token
 end
 

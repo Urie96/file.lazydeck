@@ -30,7 +30,7 @@ local function normalize_key(value, default)
 end
 
 local function normalize(next_cfg)
-  local out = lc.tbl_extend('force', {}, next_cfg or {})
+  local out = deck.tbl_extend('force', {}, next_cfg or {})
   out.preview_max_chars = math.max(tonumber(out.preview_max_chars) or defaults.preview_max_chars, 1024)
   out.preview_debounce_ms = math.max(tonumber(out.preview_debounce_ms) or defaults.preview_debounce_ms, 0)
   out.preview_mode = tostring(out.preview_mode or defaults.preview_mode)
@@ -53,8 +53,8 @@ local function normalize(next_cfg)
 end
 
 function M.new(opt)
-  local global_keymap = (lc.config.get() or {}).keymap or {}
-  return normalize(lc.tbl_deep_extend('force', defaults, { keymap = global_keymap }, opt or {}))
+  local global_keymap = (deck.config.get() or {}).keymap or {}
+  return normalize(deck.tbl_deep_extend('force', defaults, { keymap = global_keymap }, opt or {}))
 end
 
 return M

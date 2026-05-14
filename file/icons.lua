@@ -29,7 +29,7 @@ function M.get_icon(target, opts)
   local filename = target
 
   if type(target) == 'table' then
-    options = lc.tbl_extend('keep', options, { is_dir = target.is_dir == true })
+    options = deck.tbl_extend('keep', options, { is_dir = target.is_dir == true })
     filename = target.name or target.path or ''
   end
 

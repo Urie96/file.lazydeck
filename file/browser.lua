@@ -7,12 +7,12 @@ local Preview = require 'file.preview'
 local M = {}
 
 local function span(text, color)
-  local s = lc.style.span(tostring(text or ''))
+  local s = deck.style.span(tostring(text or ''))
   if color and color ~= '' then s = s:fg(color) end
   return s
 end
 
-local function line(parts) return lc.style.line(parts) end
+local function line(parts) return deck.style.line(parts) end
 
 local function format_size(bytes)
   local value = tonumber(bytes)
@@ -143,10 +143,10 @@ function M:list(path, cb)
 end
 
 function M:refresh_current_page(cb)
-  local expected_path = lc.api.get_current_path() or {}
+  local expected_path = deck.api.get_current_path() or {}
   self:list(expected_path, function(entries)
-    if not lc.deep_equal(expected_path, lc.api.get_current_path() or {}) then return end
-    lc.api.set_entries(nil, entries)
+    if not deck.deep_equal(expected_path, deck.api.get_current_path() or {}) then return end
+    deck.api.set_entries(nil, entries)
     if cb then cb(entries) end
   end)
 end

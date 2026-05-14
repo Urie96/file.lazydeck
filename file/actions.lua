@@ -50,7 +50,7 @@ function M:selected_or_hovered_handles()
   local handles = sorted_values(self.selected_handles)
   if #handles > 0 then return handles end
 
-  local entry = lc.api.get_hovered()
+  local entry = deck.api.get_hovered()
   if not entry or not entry.handle then return nil end
   return { entry.handle }
 end
@@ -78,28 +78,28 @@ function M:invalidate_parent_caches(handles)
     local parent = self.browser.provider:parent(handle)
     if parent and not seen[parent.id] then
       seen[parent.id] = true
-      lc.api.clear_page_cache(self.browser.provider:encode_page_path(parent))
+      deck.api.clear_page_cache(self.browser.provider:encode_page_path(parent))
     end
   end
 end
 
 function M:current_target_dir(cb)
-  local current_path = lc.api.get_current_path()
+  local current_path = deck.api.get_current_path()
   local dir_handle, err = self.browser.provider:decode_page_path(current_path)
   if not dir_handle then
-    lc.notify(err)
+    deck.notify(err)
     cb(nil)
     return
   end
 
   self.browser.provider:stat(dir_handle, function(stat, stat_err)
     if stat_err then
-      lc.notify('Failed to access directory: ' .. tostring(stat_err))
+      deck.notify('Failed to access directory: ' .. tostring(stat_err))
       cb(nil)
       return
     end
     if not stat.exists or not stat.is_dir then
-      lc.notify('Current page is not a directory: ' .. tostring(dir_handle.path or dir_handle.id))
+      deck.notify('Current page is not a directory: ' .. tostring(dir_handle.path or dir_handle.id))
       cb(nil)
       return
     end
@@ -116,7 +116,7 @@ function M:register_paste_keymap(source_handles, operation)
   local desc = #handles == 1 and (action .. ' ' .. basename(handles[1]))
     or ((operation == 'move' and 'move ' or 'paste ') .. tostring(#handles) .. ' entries')
 
-  lc.keymap.set('main', paste_key, function()
+  deck.keymap.set('main', paste_key, function()
     self:current_target_dir(function(target_dir)
       if not target_dir then
         self:register_paste_keymap(handles, operation)
@@ -135,15 +135,15 @@ function M:register_paste_keymap(source_handles, operation)
             local target = targets[1]
             local target_path = target and (target.path or target.id) or (target_dir.path or target_dir.id)
             if operation == 'move' then
-              lc.notify(('Moved %s -> %s'):format(handles[1].path or handles[1].id, target_path))
+              deck.notify(('Moved %s -> %s'):format(handles[1].path or handles[1].id, target_path))
             else
-              lc.notify(('Copied %s -> %s'):format(handles[1].path or handles[1].id, target_path))
+              deck.notify(('Copied %s -> %s'):format(handles[1].path or handles[1].id, target_path))
             end
           else
             if operation == 'move' then
-              lc.notify(('Moved %d entries to %s'):format(#handles, target_dir.path or target_dir.id))
+              deck.notify(('Moved %d entries to %s'):format(#handles, target_dir.path or target_dir.id))
             else
-              lc.notify(('Copied %d entries to %s'):format(#handles, target_dir.path or target_dir.id))
+              deck.notify(('Copied %d entries to %s'):format(#handles, target_dir.path or target_dir.id))
             end
           end
           self.browser:refresh_current_page()
@@ -151,7 +151,7 @@ function M:register_paste_keymap(source_handles, operation)
         end
 
         self:register_paste_keymap(handles, operation)
-        lc.notify((operation == 'move' and 'Move failed: ' or 'Copy failed: ') .. tostring(err or 'unknown error'))
+        deck.notify((operation == 'move' and 'Move failed: ' or 'Copy failed: ') .. tostring(err or 'unknown error'))
       end)
     end)
   end, {
@@ -161,9 +161,9 @@ function M:register_paste_keymap(source_handles, operation)
 end
 
 function M:select_hovered_entry()
-  local entry = lc.api.get_hovered()
+  local entry = deck.api.get_hovered()
   if not entry or not entry.handle then
-    lc.notify 'Nothing to select'
+    deck.notify 'Nothing to select'
     return
   end
 
@@ -174,70 +174,70 @@ function M:select_hovered_entry()
     self.selected_handles[id] = entry.handle
   end
   self.browser:refresh_current_page(function()
-    lc.cmd 'scroll_by 1'
+    deck.cmd 'scroll_by 1'
   end)
 end
 
 function M:edit_hovered_entry()
-  local entry = lc.api.get_hovered()
+  local entry = deck.api.get_hovered()
   if not entry or not entry.handle then
-    lc.notify 'Nothing to edit'
+    deck.notify 'Nothing to edit'
     return
   end
   if entry.handle.is_dir then
-    lc.notify 'Cannot edit a directory'
+    deck.notify 'Cannot edit a directory'
     return
   end
   if type(self.browser.provider.edit) ~= 'function' then
-    lc.notify('Edit is not supported by provider ' .. tostring(self.browser.provider.name or 'unknown'))
+    deck.notify('Edit is not supported by provider ' .. tostring(self.browser.provider.name or 'unknown'))
     return
   end
   self.browser.provider:edit(entry.handle)
 end
 
 function M:rename_hovered_entry()
-  local entry = lc.api.get_hovered()
+  local entry = deck.api.get_hovered()
   if not entry or not entry.handle then
-    lc.notify 'Nothing to rename'
+    deck.notify 'Nothing to rename'
     return
   end
   if type(self.browser.provider.rename) ~= 'function' then
-    lc.notify('Rename is not supported by provider ' .. tostring(self.browser.provider.name or 'unknown'))
+    deck.notify('Rename is not supported by provider ' .. tostring(self.browser.provider.name or 'unknown'))
     return
   end
 
   local old_handle = entry.handle
-  lc.input {
+  deck.input {
     prompt = 'Rename',
     placeholder = old_handle.name,
     value = old_handle.name,
     on_submit = function(input)
       local name = tostring(input or ''):trim()
       if name == '' then
-        lc.notify 'Name cannot be empty'
+        deck.notify 'Name cannot be empty'
         return
       end
       if name == old_handle.name then return end
       if name:find('/', 1, true) then
-        lc.notify 'Name cannot contain /'
+        deck.notify 'Name cannot contain /'
         return
       end
 
       self.browser.provider:rename(old_handle, name, function(ok, err, result)
         if not ok then
-          lc.notify('Rename failed: ' .. tostring(err or 'unknown error'))
+          deck.notify('Rename failed: ' .. tostring(err or 'unknown error'))
           return
         end
 
         local parent = self.browser.provider:parent(old_handle)
         if parent then
-          lc.api.clear_page_cache(self.browser.provider:encode_page_path(parent))
+          deck.api.clear_page_cache(self.browser.provider:encode_page_path(parent))
         end
 
         local target = result and result.target or self.browser.provider:join(parent or old_handle, name)
-        lc.notify(('Renamed %s -> %s'):format(old_handle.path or old_handle.id, target.path or target.id))
+        deck.notify(('Renamed %s -> %s'):format(old_handle.path or old_handle.id, target.path or target.id))
         self.browser:refresh_current_page(function()
-          lc.api.set_hovered(self.browser.provider:encode_page_path(target))
+          deck.api.set_hovered(self.browser.provider:encode_page_path(target))
         end)
       end)
     end,
@@ -249,17 +249,17 @@ local function prompt_create(self, kind)
     if not target_dir then return end
 
     local is_dir = kind == 'dir'
-    lc.input({
+    deck.input({
       prompt = is_dir and 'New directory name' or 'New file name',
       placeholder = is_dir and 'folder-name' or 'file.txt',
       on_submit = function(input)
         local name = tostring(input or ''):trim()
         if name == '' then
-          lc.notify(is_dir and 'Directory name cannot be empty' or 'File name cannot be empty')
+          deck.notify(is_dir and 'Directory name cannot be empty' or 'File name cannot be empty')
           return
         end
         if name:find('/', 1, true) then
-          lc.notify('Name cannot contain /')
+          deck.notify('Name cannot contain /')
           return
         end
 
@@ -267,19 +267,19 @@ local function prompt_create(self, kind)
         fn(self.browser.provider, target_dir, name, function(ok, err)
           if not ok then
             if is_dir then
-              lc.notify('Create directory failed: ' .. tostring(err or 'unknown error'))
+              deck.notify('Create directory failed: ' .. tostring(err or 'unknown error'))
             else
-              lc.notify('Create file failed: ' .. tostring(err or 'unknown error'))
+              deck.notify('Create file failed: ' .. tostring(err or 'unknown error'))
             end
             return
           end
 
           local target = self.browser.provider:join(target_dir, name)
-          lc.notify((is_dir and 'Created directory: ' or 'Created file: ')
+          deck.notify((is_dir and 'Created directory: ' or 'Created file: ')
             .. tostring(target.path))
-          lc.api.clear_page_cache(self.browser.provider:encode_page_path(target_dir))
+          deck.api.clear_page_cache(self.browser.provider:encode_page_path(target_dir))
           self.browser:refresh_current_page(function()
-            lc.api.set_hovered(self.browser.provider:encode_page_path(target))
+            deck.api.set_hovered(self.browser.provider:encode_page_path(target))
           end)
         end)
       end,
@@ -290,7 +290,7 @@ end
 function M:copy_hovered_entry()
   local source_handles = self:selected_or_hovered_handles()
   if not source_handles then
-    lc.notify 'Nothing to copy'
+    deck.notify 'Nothing to copy'
     return
   end
 
@@ -301,16 +301,16 @@ function M:copy_hovered_entry()
   self.browser:refresh_current_page()
 
   if #source_handles == 1 then
-    lc.notify(('Copied %s. Press %s to paste'):format(source_handles[1].path or source_handles[1].id, self.browser.config.keymap.paste))
+    deck.notify(('Copied %s. Press %s to paste'):format(source_handles[1].path or source_handles[1].id, self.browser.config.keymap.paste))
   else
-    lc.notify(('Copied %d entries. Press %s to paste'):format(#source_handles, self.browser.config.keymap.paste))
+    deck.notify(('Copied %d entries. Press %s to paste'):format(#source_handles, self.browser.config.keymap.paste))
   end
 end
 
 function M:cut_hovered_entry()
   local source_handles = self:selected_or_hovered_handles()
   if not source_handles then
-    lc.notify 'Nothing to cut'
+    deck.notify 'Nothing to cut'
     return
   end
 
@@ -321,16 +321,16 @@ function M:cut_hovered_entry()
   self.browser:refresh_current_page()
 
   if #source_handles == 1 then
-    lc.notify(('Cut %s. Press %s to paste'):format(source_handles[1].path or source_handles[1].id, self.browser.config.keymap.paste))
+    deck.notify(('Cut %s. Press %s to paste'):format(source_handles[1].path or source_handles[1].id, self.browser.config.keymap.paste))
   else
-    lc.notify(('Cut %d entries. Press %s to paste'):format(#source_handles, self.browser.config.keymap.paste))
+    deck.notify(('Cut %d entries. Press %s to paste'):format(#source_handles, self.browser.config.keymap.paste))
   end
 end
 
 function M:delete_hovered_entry()
   local source_handles = self:selected_or_hovered_handles()
   if not source_handles then
-    lc.notify 'Nothing to delete'
+    deck.notify 'Nothing to delete'
     return
   end
 
@@ -338,7 +338,7 @@ function M:delete_hovered_entry()
       and ('Delete "' .. basename(source_handles[1]) .. '"?')
     or ('Delete ' .. tostring(#source_handles) .. ' selected entries?')
 
-  lc.confirm({
+  deck.confirm({
     title = 'Delete File',
     prompt = prompt,
     on_confirm = function()
@@ -349,14 +349,14 @@ function M:delete_hovered_entry()
 
         if ok then
           if #source_handles == 1 then
-            lc.notify('Deleted ' .. (source_handles[1].path or source_handles[1].id))
+            deck.notify('Deleted ' .. (source_handles[1].path or source_handles[1].id))
           else
-            lc.notify(('Deleted %d entries'):format(#source_handles))
+            deck.notify(('Deleted %d entries'):format(#source_handles))
           end
           return
         end
 
-        lc.notify('Delete failed: ' .. tostring(err or 'unknown error'))
+        deck.notify('Delete failed: ' .. tostring(err or 'unknown error'))
       end)
     end,
   })

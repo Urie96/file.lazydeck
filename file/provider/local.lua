@@ -67,7 +67,7 @@ function M:encode_page_path(handle)
 end
 
 function M:list(dir_handle, cb)
-  local entries, err = lc.fs.read_dir_sync(dir_handle.path)
+  local entries, err = deck.fs.read_dir_sync(dir_handle.path)
   if err then
     cb(nil, err)
     return
@@ -82,7 +82,7 @@ function M:list(dir_handle, cb)
 end
 
 function M:stat(handle, cb)
-  cb(lc.fs.stat(handle.path))
+  cb(deck.fs.stat(handle.path))
 end
 
 function M:parent(handle)
@@ -96,39 +96,39 @@ function M:join(dir_handle, name)
 end
 
 function M:read_file(handle, opts, cb)
-  return lc.fs.read_file(handle.path, opts, cb)
+  return deck.fs.read_file(handle.path, opts, cb)
 end
 
 function M:edit(handle)
-  lc.system.edit({ path = handle.path })
+  deck.system.edit({ path = handle.path })
 end
 
 function M:create_file(dir_handle, name, cb)
   local handle = self:join(dir_handle, name)
-  local existing = lc.fs.stat(handle.path)
+  local existing = deck.fs.stat(handle.path)
   if existing.exists then
     cb(false, 'Target already exists: ' .. handle.path)
     return
   end
-  local ok, err = lc.fs.write_file_sync(handle.path, '')
+  local ok, err = deck.fs.write_file_sync(handle.path, '')
   cb(ok, err)
 end
 
 function M:create_dir(dir_handle, name, cb)
   local handle = self:join(dir_handle, name)
-  local existing = lc.fs.stat(handle.path)
+  local existing = deck.fs.stat(handle.path)
   if existing.exists then
     cb(false, 'Target already exists: ' .. handle.path)
     return
   end
-  local ok, err = lc.fs.mkdir(handle.path)
+  local ok, err = deck.fs.mkdir(handle.path)
   cb(ok, err)
 end
 
 function M:remove(handles, cb)
   local errors = {}
   for _, handle in ipairs(handles or {}) do
-    local ok, err = lc.fs.remove(handle.path)
+    local ok, err = deck.fs.remove(handle.path)
     if not ok then
       table.insert(errors, tostring(handle.path) .. ': ' .. tostring(err or 'unknown error'))
     end
@@ -149,7 +149,7 @@ local function complete_transfer(self, operation, handles, target_dir, cb)
   end
   table.insert(cmd, target_dir.path)
 
-  lc.system(cmd, function(out)
+  deck.system(cmd, function(out)
     if out.code == 0 then
       local targets = {}
       for _, handle in ipairs(handles) do
@@ -186,13 +186,13 @@ function M:rename(handle, name, cb)
   end
 
   local target = self:join(parent, name)
-  local existing = lc.fs.stat(target.path)
+  local existing = deck.fs.stat(target.path)
   if existing.exists then
     cb(false, 'Target already exists: ' .. target.path)
     return
   end
 
-  lc.system({ 'mv', handle.path, target.path }, function(out)
+  deck.system({ 'mv', handle.path, target.path }, function(out)
     if out.code == 0 then
       target.is_dir = handle.is_dir
       target.size = handle.size
