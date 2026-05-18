@@ -46,9 +46,10 @@ function M.new(browser)
   add_keymap({ file_keymap }, keymap.edit, function() actions:edit_hovered_entry() end, 'edit file')
   add_keymap(dir_and_file_keymap, keymap.rename, function() actions:rename_hovered_entry() end, 'rename entry')
   add_keymap(dir_and_file_keymap, keymap.select, function() actions:select_hovered_entry() end, 'select entry')
-  add_keymap(dir_and_file_keymap, keymap.yank, function() actions:copy_hovered_entry() end, 'copy entry')
+  add_keymap(dir_and_file_keymap, keymap.yank, function() actions:yank_hovered_entry() end, 'yank entry')
   add_keymap(dir_and_file_keymap, keymap.cut, function() actions:cut_hovered_entry() end, 'cut entry')
   add_keymap(dir_and_file_keymap, keymap.delete, function() actions:delete_hovered_entry() end, 'delete entry')
+  add_keymap(dir_and_file_keymap, keymap.paste, function() actions:paste_from_clipboard() end, 'paste entry')
 
   return setmetatable(self, { __index = M })
 end

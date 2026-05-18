@@ -22,7 +22,9 @@ function M.new_local(opt)
 end
 
 function M.setup(opt)
-  default_browser = M.new_local(opt or {})
+  local cfg = opt or {}
+  if cfg.root == nil then cfg.root = os.getenv('HOME') or '/' end
+  default_browser = M.new_local(cfg)
 end
 
 function M.list(path, cb)
@@ -37,8 +39,8 @@ function M.get_icon(target, opt)
   return Icons.get_icon(target, opt)
 end
 
-function M.copy_hovered_entry()
-  return ensure_default_browser().actions:copy_hovered_entry()
+function M.yank_hovered_entry()
+  return ensure_default_browser().actions:yank_hovered_entry()
 end
 
 return M

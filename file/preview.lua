@@ -67,6 +67,10 @@ local function language_for(name)
   return nil
 end
 
+local function is_code_file(name)
+  return language_for(name) ~= nil
+end
+
 local function render_file_preview(path, content, err, meta)
   if err then return text {
     line { span('Failed to read file', 'red') },
@@ -215,6 +219,19 @@ end
 
 function M:file_preview(entry, cb)
   local path = entry.handle.path or entry.handle.id
+  local provider_name = tostring(self.browser.provider and self.browser.provider.name or '')
+  local filename = path:match '[^/]+$' or path
+
+  if provider_name ~= 'local' and not is_code_file(filename) then
+    self:next_preview_token()
+    cb(text {
+      line { span('Preview skipped', 'yellow') },
+      line { span('Non-code file on non-local provider', 'darkgray') },
+      line { span(path, 'white') },
+    })
+    return
+  end
+
   self:run_debounced(entry, cb, function(token)
     self.browser.provider:read_file(entry.handle, { max_chars = self.browser.config.preview_max_chars }, function(content, err, meta)
       if not self:is_latest_preview_token(token) then return end

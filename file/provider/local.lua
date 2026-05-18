@@ -20,10 +20,13 @@ local function join_path(dir, name)
 end
 
 function M.new(opt)
+  local cfg = opt or {}
   local self = {
     name = 'local',
-    route_name = (opt or {}).route_name or 'file',
+    route_name = cfg.route_name or 'file',
+    base_dir = tostring(cfg.root or '/'),
   }
+  if self.base_dir == '' then self.base_dir = '/' end
   return setmetatable(self, { __index = M })
 end
 
@@ -40,7 +43,7 @@ function M:handle(path, is_dir, size)
 end
 
 function M:root()
-  return self:handle('/', true)
+  return self:handle(self.base_dir, true)
 end
 
 function M:decode_page_path(path)
@@ -53,13 +56,25 @@ function M:decode_page_path(path)
     table.insert(segments, path[i])
   end
   if #segments == 0 then return self:root() end
-  return self:handle('/' .. table.concat(segments, '/'), true)
+
+  local rel = table.concat(segments, '/')
+  if self.base_dir == '/' then
+    return self:handle('/' .. rel, true)
+  end
+  return self:handle(self.base_dir .. '/' .. rel, true)
 end
 
 function M:encode_page_path(handle)
   local out = { self.route_name }
   local value = tostring(handle.path or '')
-  if value == '' or value == '/' then return out end
+  local base = tostring(self.base_dir or '/')
+  if base ~= '/' and value:sub(1, #base) == base then
+    value = value:sub(#base + 1)
+  elseif base == '/' and value:sub(1, 1) == '/' then
+    value = value:sub(2)
+  end
+  value = value:gsub('^/*', '')
+  if value == '' then return out end
   for segment in value:gmatch '[^/]+' do
     table.insert(out, segment)
   end

@@ -1,3 +1,5 @@
+local Clipboard = require 'file.clipboard'
+
 local M = {}
 
 local function copy_list(items)
@@ -19,14 +21,6 @@ local function sorted_values(map)
   return out
 end
 
-local function list_to_map(items)
-  local out = {}
-  for _, item in ipairs(items or {}) do
-    out[item.id] = item
-  end
-  return out
-end
-
 local function basename(handle)
   if type(handle) ~= 'table' then return '' end
   return tostring(handle.name or handle.path or handle.id or '')
@@ -36,8 +30,6 @@ function M.new(browser)
   local self = {
     browser = browser,
     selected_handles = {},
-    clipboard_handles = {},
-    clipboard_operation = nil,
   }
   return setmetatable(self, { __index = M })
 end
@@ -58,9 +50,10 @@ end
 function M:marker_color(handle)
   local id = handle and handle.id
   if not id then return nil end
-  if self.clipboard_handles[id] then
-    if self.clipboard_operation == 'copy' then return 'green' end
-    if self.clipboard_operation == 'move' then return 'red' end
+  local clip = Clipboard.get()
+  if clip and clip.provider == self.browser.provider and clip.handles_map[id] then
+    if clip.operation == 'copy' then return 'green' end
+    if clip.operation == 'move' then return 'red' end
   end
   if self.selected_handles[id] then return 'yellow' end
   return nil
@@ -72,15 +65,19 @@ function M:toggle_hidden()
   return self.browser.config.show_hidden
 end
 
-function M:invalidate_parent_caches(handles)
+function M:invalidate_provider_caches(provider, handles)
   local seen = {}
   for _, handle in ipairs(handles or {}) do
-    local parent = self.browser.provider:parent(handle)
+    local parent = provider:parent(handle)
     if parent and not seen[parent.id] then
       seen[parent.id] = true
-      deck.api.clear_page_cache(self.browser.provider:encode_page_path(parent))
+      deck.api.clear_page_cache(provider:encode_page_path(parent))
     end
   end
+end
+
+function M:invalidate_parent_caches(handles)
+  self:invalidate_provider_caches(self.browser.provider, handles)
 end
 
 function M:current_target_dir(cb)
@@ -107,57 +104,75 @@ function M:current_target_dir(cb)
   end)
 end
 
-function M:register_paste_keymap(source_handles, operation)
-  local paste_key = self.browser.config.keymap.paste
-  if not paste_key or paste_key == '' then return end
+local function notify_transfer_success(operation, handles, target_dir, result)
+  local targets = result and result.targets or {}
+  if #handles == 1 then
+    local target = targets[1]
+    local target_path = target and (target.path or target.id) or (target_dir.path or target_dir.id)
+    if operation == 'move' then
+      deck.notify(('Moved %s -> %s'):format(handles[1].path or handles[1].id, target_path))
+    else
+      deck.notify(('Copied %s -> %s'):format(handles[1].path or handles[1].id, target_path))
+    end
+  else
+    if operation == 'move' then
+      deck.notify(('Moved %d entries to %s'):format(#handles, target_dir.path or target_dir.id))
+    else
+      deck.notify(('Copied %d entries to %s'):format(#handles, target_dir.path or target_dir.id))
+    end
+  end
+end
 
-  local handles = copy_list(source_handles)
-  local action = operation == 'move' and 'move' or 'paste'
-  local desc = #handles == 1 and (action .. ' ' .. basename(handles[1]))
-    or ((operation == 'move' and 'move ' or 'paste ') .. tostring(#handles) .. ' entries')
+function M:run_paste(clip, target_dir, done)
+  local source_provider = clip.provider
+  local target_provider = self.browser.provider
+  local handles = copy_list(clip.handles or {})
+  local operation = clip.operation == 'move' and 'move' or 'copy'
 
-  deck.keymap.set('main', paste_key, function()
-    self:current_target_dir(function(target_dir)
-      if not target_dir then
-        self:register_paste_keymap(handles, operation)
+  if source_provider == target_provider then
+    local fn = operation == 'move' and target_provider.move or target_provider.copy
+    return fn(target_provider, handles, target_dir, done)
+  end
+
+  if operation == 'move' then
+    done(false, 'cross-provider move is not supported')
+    return
+  end
+
+  if source_provider.name == 'local' and type(target_provider.upload) == 'function' then
+    return target_provider:upload({ provider = source_provider, handles = handles, operation = operation }, target_dir, done)
+  end
+
+  if target_provider.name == 'local' and type(source_provider.download) == 'function' then
+    return source_provider:download({ provider = source_provider, handles = handles, operation = operation }, target_dir, done)
+  end
+
+  done(false, 'cross-provider paste is not supported between '
+    .. tostring(source_provider.name or 'unknown') .. ' and ' .. tostring(target_provider.name or 'unknown'))
+end
+
+function M:paste_from_clipboard()
+  local clip = Clipboard.get()
+  if not clip then
+    deck.notify 'Nothing to paste'
+    return
+  end
+
+  self:current_target_dir(function(target_dir)
+    if not target_dir then return end
+
+    self:run_paste(clip, target_dir, function(ok, err, result)
+      if ok then
+        self:invalidate_provider_caches(clip.provider, clip.handles)
+        Clipboard.clear()
+        notify_transfer_success(clip.operation, clip.handles, target_dir, result)
+        self.browser:refresh_current_page()
         return
       end
 
-      local fn = operation == 'move' and self.browser.provider.move or self.browser.provider.copy
-      fn(self.browser.provider, handles, target_dir, function(ok, err, result)
-        if ok then
-          self:invalidate_parent_caches(handles)
-          self.clipboard_handles = {}
-          self.clipboard_operation = nil
-
-          local targets = result and result.targets or {}
-          if #handles == 1 then
-            local target = targets[1]
-            local target_path = target and (target.path or target.id) or (target_dir.path or target_dir.id)
-            if operation == 'move' then
-              deck.notify(('Moved %s -> %s'):format(handles[1].path or handles[1].id, target_path))
-            else
-              deck.notify(('Copied %s -> %s'):format(handles[1].path or handles[1].id, target_path))
-            end
-          else
-            if operation == 'move' then
-              deck.notify(('Moved %d entries to %s'):format(#handles, target_dir.path or target_dir.id))
-            else
-              deck.notify(('Copied %d entries to %s'):format(#handles, target_dir.path or target_dir.id))
-            end
-          end
-          self.browser:refresh_current_page()
-          return
-        end
-
-        self:register_paste_keymap(handles, operation)
-        deck.notify((operation == 'move' and 'Move failed: ' or 'Copy failed: ') .. tostring(err or 'unknown error'))
-      end)
+      deck.notify((clip.operation == 'move' and 'Move failed: ' or 'Copy failed: ') .. tostring(err or 'unknown error'))
     end)
-  end, {
-    once = true,
-    desc = desc,
-  })
+  end)
 end
 
 function M:select_hovered_entry()
@@ -287,23 +302,21 @@ local function prompt_create(self, kind)
   end)
 end
 
-function M:copy_hovered_entry()
+function M:yank_hovered_entry()
   local source_handles = self:selected_or_hovered_handles()
   if not source_handles then
-    deck.notify 'Nothing to copy'
+    deck.notify 'Nothing to yank'
     return
   end
 
-  self.clipboard_handles = list_to_map(source_handles)
-  self.clipboard_operation = 'copy'
-  self:register_paste_keymap(source_handles, 'copy')
+  Clipboard.set(self.browser.provider, source_handles, 'copy')
   self:clear_selected()
   self.browser:refresh_current_page()
 
   if #source_handles == 1 then
-    deck.notify(('Copied %s. Press %s to paste'):format(source_handles[1].path or source_handles[1].id, self.browser.config.keymap.paste))
+    deck.notify(('Yanked %s. Press %s to paste'):format(source_handles[1].path or source_handles[1].id, self.browser.config.keymap.paste))
   else
-    deck.notify(('Copied %d entries. Press %s to paste'):format(#source_handles, self.browser.config.keymap.paste))
+    deck.notify(('Yanked %d entries. Press %s to paste'):format(#source_handles, self.browser.config.keymap.paste))
   end
 end
 
@@ -314,9 +327,7 @@ function M:cut_hovered_entry()
     return
   end
 
-  self.clipboard_handles = list_to_map(source_handles)
-  self.clipboard_operation = 'move'
-  self:register_paste_keymap(source_handles, 'move')
+  Clipboard.set(self.browser.provider, source_handles, 'move')
   self:clear_selected()
   self.browser:refresh_current_page()
 
