@@ -4,6 +4,14 @@ local LocalProvider = require 'file.provider.local'
 
 local M = {}
 
+function M.meta()
+  return {
+    icon = '󰈔',
+    desc = 'File browser',
+    color = 'blue',
+  }
+end
+
 local default_browser = nil
 
 local function ensure_default_browser()
