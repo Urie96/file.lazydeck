@@ -10,17 +10,6 @@ local function copy_list(items)
   return out
 end
 
-local function sorted_values(map)
-  local out = {}
-  for _, value in pairs(map) do
-    table.insert(out, value)
-  end
-  table.sort(out, function(a, b)
-    return tostring(a.id or '') < tostring(b.id or '')
-  end)
-  return out
-end
-
 local function basename(handle)
   if type(handle) ~= 'table' then return '' end
   return tostring(handle.name or handle.path or handle.id or '')
@@ -29,34 +18,35 @@ end
 function M.new(browser)
   local self = {
     browser = browser,
-    selected_handles = {},
   }
   return setmetatable(self, { __index = M })
 end
 
-function M:clear_selected()
-  self.selected_handles = {}
-end
-
 function M:selected_or_hovered_handles()
-  local handles = sorted_values(self.selected_handles)
-  if #handles > 0 then return handles end
-
-  local entry = deck.api.get_hovered()
-  if not entry or not entry.handle then return nil end
-  return { entry.handle }
+  local entries = deck.api.get_selected()
+  local handles = {}
+  for _, entry in ipairs(entries or {}) do
+    if entry.handle then
+      table.insert(handles, entry.handle)
+    end
+  end
+  if #handles == 0 then return nil end
+  return handles
 end
 
-function M:marker_color(handle)
-  local id = handle and handle.id
-  if not id then return nil end
-  local clip = Clipboard.get()
-  if clip and clip.provider == self.browser.provider and clip.handles_map[id] then
-    if clip.operation == 'copy' then return 'green' end
-    if clip.operation == 'move' then return 'red' end
+function M:open_hovered_entry()
+  local entry = deck.api.get_hovered()
+  if not entry or not entry.handle then
+    deck.notify 'Nothing to open'
+    return
   end
-  if self.selected_handles[id] then return 'yellow' end
-  return nil
+
+  if entry.handle.is_dir then
+    deck.api.go_to(self.browser.provider:encode_page_path(entry.handle))
+    return
+  end
+
+  deck.system.open(entry.handle.path)
 end
 
 function M:toggle_hidden()
@@ -172,24 +162,6 @@ function M:paste_from_clipboard()
 
       deck.notify((clip.operation == 'move' and 'Move failed: ' or 'Copy failed: ') .. tostring(err or 'unknown error'))
     end)
-  end)
-end
-
-function M:select_hovered_entry()
-  local entry = deck.api.get_hovered()
-  if not entry or not entry.handle then
-    deck.notify 'Nothing to select'
-    return
-  end
-
-  local id = entry.handle.id
-  if self.selected_handles[id] then
-    self.selected_handles[id] = nil
-  else
-    self.selected_handles[id] = entry.handle
-  end
-  self.browser:refresh_current_page(function()
-    deck.cmd 'scroll_by 1'
   end)
 end
 
@@ -310,8 +282,7 @@ function M:yank_hovered_entry()
   end
 
   Clipboard.set(self.browser.provider, source_handles, 'copy')
-  self:clear_selected()
-  self.browser:refresh_current_page()
+  deck.api.clear_selected()
 
   if #source_handles == 1 then
     deck.notify(('Yanked %s. Press %s to paste'):format(source_handles[1].path or source_handles[1].id, self.browser.config.keymap.paste))
@@ -328,8 +299,7 @@ function M:cut_hovered_entry()
   end
 
   Clipboard.set(self.browser.provider, source_handles, 'move')
-  self:clear_selected()
-  self.browser:refresh_current_page()
+  deck.api.clear_selected()
 
   if #source_handles == 1 then
     deck.notify(('Cut %s. Press %s to paste'):format(source_handles[1].path or source_handles[1].id, self.browser.config.keymap.paste))
@@ -354,7 +324,7 @@ function M:delete_hovered_entry()
     prompt = prompt,
     on_confirm = function()
       self.browser.provider:remove(source_handles, function(ok, err)
-        self:clear_selected()
+        deck.api.clear_selected()
         self:invalidate_parent_caches(source_handles)
         self.browser:refresh_current_page()
 

@@ -6,6 +6,8 @@ local defaults = {
   preview_mode = 'full',
   show_hidden = false,
   keymap = {
+    open = '<right>',
+    enter = '<enter>',
     new_file = 'n',
     new_dir = 'N',
     edit = 'e',
@@ -39,6 +41,8 @@ local function normalize(next_cfg)
   end
   out.show_hidden = out.show_hidden == true
   out.keymap = out.keymap or {}
+  out.keymap.open = normalize_key(out.keymap.open, defaults.keymap.open)
+  out.keymap.enter = normalize_key(out.keymap.enter, defaults.keymap.enter)
   out.keymap.new_file = normalize_key(out.keymap.new_file, defaults.keymap.new_file)
   out.keymap.new_dir = normalize_key(out.keymap.new_dir, defaults.keymap.new_dir)
   out.keymap.edit = normalize_key(out.keymap.edit, defaults.keymap.edit)

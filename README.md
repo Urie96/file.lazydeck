@@ -7,16 +7,16 @@
 - 进入 `/file` 后默认从家目录开始浏览（可通过 `root` 配置覆盖）
 - 列表区域会在文件和目录名前显示图标；目录名仍显示为蓝色，文件名显示为白色
 - hover 文件时，底部左侧会显示该文件大小，样式为白底蓝字的 ` 608K `
-- 目录项通过 entry metatable 提供局部 `keymap`，支持用右键/回车进入
-- 文件项不会继续被当作目录进入，右键/回车只会刷新预览
+- entry 只保留文件/目录数据；预览由插件级 `preview(entry, cb)` 统一按 entry kind 分发
+- 文件浏览行为统一注册为 `/file/**` page keymap，右键/回车会进入目录，文件会通过系统默认应用打开
 - `n`：在当前目录创建新文件，创建成功后会自动 hover 到新文件
 - `N`：在当前目录创建新文件夹，创建成功后会自动 hover 到新文件夹
 - `e`：通过 `deck.system.edit` 用外部编辑器编辑当前文件（优先 `$VISUAL`，其次 `$EDITOR`，默认 `vi`）
 - `r`：重命名当前文件或目录
-- `Space`：切换当前 hovered 条目的选中状态，并在刷新后自动下移一项；选中标记显示为彩色 `▌`
+- `Space`：通过 Rust 页面级 selection 切换当前 hovered 条目的选中状态，并自动下移一项；选中标记显示为黄色 `▌`，切换到其他页面后自动失效
 - `.`：切换是否显示隐藏文件
-- `yy`：如果存在已选条目，则只 yank 所有已选条目；否则 yank 当前 hovered 的文件或目录。yank 后源条目标记变为绿底，粘贴成功后清除；剪贴板在所有 file browser 实例间共享，可由 provider 通过 `upload`/`download` 支持 local 与远端互传
-- `xx`：如果存在已选条目，则剪切所有已选条目；否则剪切当前 hovered 的文件或目录，并注册一次性的 `p`。剪切后源条目标记变为红底，粘贴成功后清除；跨 provider move 暂不支持
+- `yy`：通过 `deck.api.get_selected()` 获取已选条目；如果没有已选条目则 yank 当前 hovered 的文件或目录。剪贴板在所有 file browser 实例间共享，可由 provider 通过 `upload`/`download` 支持 local 与远端互传
+- `xx`：通过 `deck.api.get_selected()` 获取已选条目；如果没有已选条目则剪切当前 hovered 的文件或目录；跨 provider move 暂不支持
 - `dd`：如果存在已选条目，则删除所有已选条目；否则删除当前 hovered 的文件或目录
 - `p`：在当前 `/file/...` 目录中粘贴刚才 yank 的文件或目录
 - 预览区域：
@@ -63,26 +63,26 @@ require('file').setup {
 
 ## 结构
 
-- `file/init.lua`: 无状态工厂入口，同时兼容本地 `/file` 默认实例
-- `file/browser.lua`: 通用文件浏览器实例，负责列表构建和 entry 组装
-- `file/actions.lua`: 基于 browser/provider 实例的复制、粘贴、删除、创建等动作
+- `file/init.lua`: 无状态工厂入口，同时兼容本地 `/file` 默认实例，并注册 `/file/**` page keymap
+- `file/browser.lua`: 通用文件浏览器实例，负责列表构建和纯数据 entry 组装
+- `file/actions.lua`: 基于 browser/provider 实例的打开、复制、粘贴、删除、创建等动作
 - `file/clipboard.lua`: file browser 实例间共享的剪贴板，用于同 provider 粘贴以及 local 与远端 provider 互传
 - `file/config.lua`: browser 实例配置构建
-- `file/metas.lua`: 给 entry 注入实例级 `keymap` 和 `preview`
-- `file/preview.lua`: 通用目录/文件预览渲染
+- `file/preview.lua`: 通用目录/文件预览渲染，由插件级 preview 统一分发调用
 - `file/icons.lua`: 图标匹配封装，复用 vendored 的 nvim-web-devicons 扩展名映射
 - `file/icons_by_file_extension.lua`: 从 nvim-web-devicons 复制的扩展名图标和颜色表
 - `file/provider/local.lua`: 本地文件系统 provider，实现读写、路径编解码，并在 handle 上提供 `size`
 
 ## 复用
 
-`require('file')` 现在既可以作为本地文件插件使用，也可以作为其他文件系统浏览插件的浏览器工厂：
+`require('file')` 现在既可以作为本地文件插件使用，也可以作为其他文件系统浏览插件的浏览器工厂。`file.new(...)` / `file.new_local(...)` 默认会自动注册 page keymap；如果某个复用方不想要这套默认键位，可以在 opt 里显式传 `register_page_keymaps = false`。若在其他插件中创建 browser，并且保持默认注册，仍然建议在插件级 `preview(entry, cb)` 里委托到对应 browser：
 
 ```lua
 local file = require 'file'
 local browser = file.new(my_provider, {
   preview_max_chars = 60000,
 })
+-- 默认会自动注册 page keymap；如需关闭可传 register_page_keymaps = false
 ```
 
 对外可复用的工厂函数：
@@ -91,7 +91,7 @@ local browser = file.new(my_provider, {
 - `file.new_local(opt)`: 使用本地文件系统 provider 创建 browser 实例
 - `file.get_icon(target, opt)`: 根据文件名、路径或 handle 获取图标、颜色和图标元数据
 
-每个 browser 实例独立维护自己的选中态、剪贴板态、隐藏文件开关和预览 token，适合在 `sftp`、`adb`、`docker` 等插件中按 profile、设备、容器分别持有多个实例。
+每个 browser 实例独立维护自己的隐藏文件开关和预览 token；选中态由 lazydeck 页面级 selection 管理，复制/剪切剪贴板在 file browser 实例间共享。`file.new(...)` 会基于 provider 的 root/page path 自动注册实例级 page keymap，因此适合在 `sftp`、`adb`、`docker` 等插件中按 profile、设备、容器分别持有多个实例。若需要保留原本的自定义键位，可在 opt 中关闭自动注册。
 
 provider 需要实现一组面向 callback 的方法，便于对接异步命令型后端；其中 `list()` 返回的 handle 可以携带 `size` 等元信息，供 browser 渲染底部状态行：
 

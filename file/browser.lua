@@ -1,7 +1,6 @@
 local Actions = require 'file.actions'
 local config = require 'file.config'
 local Icons = require 'file.icons'
-local Metas = require 'file.metas'
 local Preview = require 'file.preview'
 
 local M = {}
@@ -61,6 +60,7 @@ local function info_entry(key, message, color)
   return {
     key = key,
     kind = 'info',
+    selectable = false,
     message = message,
     color = color or 'darkgray',
     display = line { span(message, color or 'darkgray') },
@@ -75,7 +75,6 @@ function M.new(provider, opt)
   setmetatable(self, { __index = M })
   self.actions = Actions.new(self)
   self.previewer = Preview.new(self)
-  self.metas = Metas.new(self)
   return self
 end
 
@@ -93,52 +92,45 @@ end
 function M:list(path, cb)
   local error_entries, dir_handle = self:build_entries(path)
   if error_entries then
-    cb(self.metas:attach_all(error_entries))
+    cb(error_entries)
     return
   end
 
   self.provider:list(dir_handle, function(handles, err)
     if err then
-      cb(self.metas:attach_all {
+      cb {
         info_entry('error', 'Failed to read ' .. tostring(dir_handle.path or dir_handle.id), 'red'),
         info_entry('error-detail', err, 'red'),
-      })
+      }
       return
     end
 
     handles = sort_handles(handles or {})
     local out = {}
     for _, handle in ipairs(handles) do
-      if not self.config.show_hidden and is_hidden(handle.name) then goto continue end
+      if self.config.show_hidden or not is_hidden(handle.name) then
+        local icon, icon_color = Icons.get_icon(handle)
+        local name_color = handle.is_dir and 'blue' or 'white'
 
-      local marker_color = self.actions:marker_color(handle)
-      local marker = span ' '
-      if marker_color then marker = span('▌', marker_color) end
-
-      local icon, icon_color = Icons.get_icon(handle)
-      local name_color = handle.is_dir and 'blue' or 'white'
-
-      table.insert(out, {
-        key = handle.name,
-        kind = handle.is_dir and 'dir' or 'file',
-        name = handle.name,
-        handle = handle,
-        path = handle.path,
-        path_parts = self.provider:encode_page_path(handle),
-        is_dir = handle.is_dir,
-        display = line {
-          marker,
-          span(icon .. ' ', icon_color),
-          span(handle.name, name_color),
-        },
-        bottom_line = build_bottom_line(handle),
-      })
-
-      ::continue::
+        table.insert(out, {
+          key = handle.name,
+          kind = handle.is_dir and 'dir' or 'file',
+          name = handle.name,
+          handle = handle,
+          path = handle.path,
+          path_parts = self.provider:encode_page_path(handle),
+          is_dir = handle.is_dir,
+          display = line {
+            span(icon .. ' ', icon_color),
+            span(handle.name, name_color),
+          },
+          bottom_line = build_bottom_line(handle),
+        })
+      end
     end
 
     if #out == 0 then table.insert(out, info_entry('empty', 'Empty directory')) end
-    cb(self.metas:attach_all(out))
+    cb(out)
   end)
 end
 
