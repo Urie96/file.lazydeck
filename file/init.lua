@@ -58,6 +58,7 @@ function M.register_page_keymaps(browser)
   map_file_key(browser, keymap.cut, function() actions:cut_hovered_entry() end, 'cut entry')
   map_file_key(browser, keymap.delete, function() actions:delete_hovered_entry() end, 'delete entry')
   map_file_key(browser, keymap.paste, function() actions:paste_from_clipboard() end, 'paste entry')
+  map_file_key(browser, keymap.force_preview, function() actions:force_preview_hovered_entry() end, 'force preview')
 end
 
 local function ensure_default_browser()

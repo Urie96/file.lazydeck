@@ -19,11 +19,13 @@
 - `xx`：通过 `deck.api.get_selected()` 获取已选条目；如果没有已选条目则剪切当前 hovered 的文件或目录；跨 provider move 暂不支持
 - `dd`：如果存在已选条目，则删除所有已选条目；否则删除当前 hovered 的文件或目录
 - `p`：在当前 `/file/...` 目录中粘贴刚才 yank 的文件或目录
+- `P`：对当前文件强制预览；外部 provider 的图片会通过 provider `read_file(handle, nil, cb)` 读取到本地缓存后渲染，其他文件则强制读取文本预览
 - 预览区域：
   - 目录：展示子文件列表
   - 常见代码文件：异步读取后使用 `deck.style.highlight` 语法高亮
+  - 本地图片文件（png/jpg/jpeg/webp）：使用 `deck.style.image` 预览
   - 本地普通文本文件：纯文本展示
-  - 非 local provider 的非代码文件会直接跳过预览读取，只显示提示
+  - 非 local provider 的非代码文件会直接跳过预览读取，只显示提示；按 `P` 可强制预览
   - 文件预览只加载配置的最大字符数，不会在向下滚动时继续读取更多内容
 
 ## 配置
@@ -57,6 +59,7 @@ require('file').setup {
     cut = 'xx',
     delete = 'dd',
     paste = 'p',
+    force_preview = 'P',
   },
 }
 ```
@@ -68,7 +71,7 @@ require('file').setup {
 - `file/actions.lua`: 基于 browser/provider 实例的打开、复制、粘贴、删除、创建等动作
 - `file/clipboard.lua`: file browser 实例间共享的剪贴板，用于同 provider 粘贴以及 local 与远端 provider 互传
 - `file/config.lua`: browser 实例配置构建
-- `file/preview.lua`: 通用目录/文件预览渲染，由插件级 preview 统一分发调用
+- `file/preview.lua`: 通用目录/文件预览渲染，由插件级 preview 统一分发调用；外部 provider 的非代码文件默认跳过，可用 `force_preview` 键强制预览
 - `file/icons.lua`: 图标匹配封装，复用 vendored 的 nvim-web-devicons 扩展名映射
 - `file/icons_by_file_extension.lua`: 从 nvim-web-devicons 复制的扩展名图标和颜色表
 - `file/provider/local.lua`: 本地文件系统 provider，实现读写、路径编解码，并在 handle 上提供 `size`
@@ -93,15 +96,19 @@ local browser = file.new(my_provider, {
 
 每个 browser 实例独立维护自己的隐藏文件开关和预览 token；选中态由 lazydeck 页面级 selection 管理，复制/剪切剪贴板在 file browser 实例间共享。`file.new(...)` 会基于 provider 的 root/page path 自动注册实例级 page keymap，因此适合在 `sftp`、`adb`、`docker` 等插件中按 profile、设备、容器分别持有多个实例。若需要保留原本的自定义键位，可在 opt 中关闭自动注册。
 
-provider 需要实现一组面向 callback 的方法，便于对接异步命令型后端；其中 `list()` 返回的 handle 可以携带 `size` 等元信息，供 browser 渲染底部状态行：
+provider 使用一组面向 callback 的方法，便于对接异步命令型后端；其中 `list()` 返回的 handle 可以携带 `size` 等元信息，供 browser 渲染底部状态行。基础浏览能力需要实现：
 
 - `decode_page_path(path)` / `encode_page_path(handle)`
 - `parent(handle)` / `join(dir_handle, name)`
 - `list(dir_handle, cb)`
 - `stat(handle, cb)`
 - `read_file(handle, opts, cb)`
+
+写操作按能力可选实现，缺失时对应快捷键会提示 provider 不支持：
+
 - `create_file(dir_handle, name, cb)` / `create_dir(dir_handle, name, cb)`
 - `remove(handles, cb)`
 - `copy(handles, target_dir, cb)` / `move(handles, target_dir, cb)`
-- 可选：`upload(source, target_dir, cb)`，当当前 provider 作为目标、source provider 是 `local` 时接收上传
-- 可选：`download(source, target_dir, cb)`，当当前 provider 作为来源、目标 provider 是 `local` 时下载到本地
+- `upload(source, target_dir, cb)`，当当前 provider 作为目标、source provider 是 `local` 时接收上传
+- `download(source, target_dir, cb)`，当当前 provider 作为来源、目标 provider 是 `local` 时下载到本地
+- `copy_from(source, target_dir, cb)`，当 provider 需要自定义非 local 跨 provider 复制时实现（例如不同 rclone remote 之间复制）

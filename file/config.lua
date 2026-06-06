@@ -18,6 +18,7 @@ local defaults = {
     cut = 'xx',
     delete = 'dd',
     paste = 'p',
+    force_preview = 'P',
   },
 }
 
@@ -53,6 +54,7 @@ local function normalize(next_cfg)
   out.keymap.cut = normalize_key(out.keymap.cut, defaults.keymap.cut)
   out.keymap.delete = normalize_key(out.keymap.delete, defaults.keymap.delete)
   out.keymap.paste = normalize_key(out.keymap.paste, defaults.keymap.paste)
+  out.keymap.force_preview = normalize_key(out.keymap.force_preview, defaults.keymap.force_preview)
   return out
 end
 

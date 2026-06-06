@@ -67,8 +67,21 @@ local function language_for(name)
   return nil
 end
 
+local IMAGE_EXTENSIONS = {
+  jpeg = true,
+  jpg = true,
+  png = true,
+  webp = true,
+}
+
 local function is_code_file(name)
   return language_for(name) ~= nil
+end
+
+local function is_image_file(name)
+  local ext = tostring(name or ''):match '%.([^.]+)$'
+  if not ext then return false end
+  return IMAGE_EXTENSIONS[string.lower(ext)] == true
 end
 
 local function render_file_preview(path, content, err, meta)
@@ -217,21 +230,8 @@ function M:dir_preview(entry, cb)
   end)
 end
 
-function M:file_preview(entry, cb)
+function M:read_file_preview(entry, cb)
   local path = entry.handle.path or entry.handle.id
-  local provider_name = tostring(self.browser.provider and self.browser.provider.name or '')
-  local filename = path:match '[^/]+$' or path
-
-  if provider_name ~= 'local' and not is_code_file(filename) then
-    self:next_preview_token()
-    cb(text {
-      line { span('Preview skipped', 'yellow') },
-      line { span('Non-code file on non-local provider', 'darkgray') },
-      line { span(path, 'white') },
-    })
-    return
-  end
-
   self:run_debounced(entry, cb, function(token)
     self.browser.provider:read_file(entry.handle, { max_chars = self.browser.config.preview_max_chars }, function(content, err, meta)
       if not self:is_latest_preview_token(token) then return end
@@ -239,6 +239,116 @@ function M:file_preview(entry, cb)
       cb(render_file_preview(path, content, err, meta))
     end)
   end)
+end
+
+local function remote_image_cache_dir(provider, handle)
+  local home = os.getenv 'HOME'
+  if not home or home == '' then return nil, 'HOME is not set' end
+
+  local source = tostring(provider.name or 'provider')
+    .. '\0' .. tostring(handle.id or '')
+    .. '\0' .. tostring(handle.path or '')
+    .. '\0' .. tostring(handle.size or '')
+  local key = deck.hash.md5(source)
+  return home .. '/.cache/lazydeck/remote-preview-images/' .. key
+end
+
+function M:remote_image_preview(entry, cb)
+  local path = entry.handle.path or entry.handle.id
+  if type(self.browser.provider.read_file) ~= 'function' then return false end
+
+  local cache_dir, cache_err = remote_image_cache_dir(self.browser.provider, entry.handle)
+  if not cache_dir then
+    cb(text {
+      line { span('Failed to preview image', 'red') },
+      line { span(tostring(cache_err), 'red') },
+      line { span(path, 'white') },
+    })
+    return true
+  end
+
+  local target_path = cache_dir .. '/' .. tostring(entry.handle.name or 'preview-image')
+  local stat = deck.fs.stat(target_path)
+  local expected_size = tonumber(entry.handle.size)
+  if stat and stat.exists and stat.is_file and (not expected_size or tonumber(stat.size) == expected_size) then
+    self:next_preview_token()
+    cb(deck.style.image(target_path))
+    return true
+  end
+
+  local ok_mkdir, mkdir_err = deck.fs.mkdir(cache_dir)
+  if not ok_mkdir then
+    cb(text {
+      line { span('Failed to preview image', 'red') },
+      line { span(tostring(mkdir_err), 'red') },
+      line { span(path, 'white') },
+    })
+    return true
+  end
+
+  local token = self:next_preview_token()
+  self.browser.provider:read_file(entry.handle, nil, function(content, err)
+    if not self:is_latest_preview_token(token) then return end
+    if not self:is_current_hover(entry) then return end
+
+    if err then
+      cb(text {
+        line { span('Failed to preview image', 'red') },
+        line { span(tostring(err), 'red') },
+        line { span(path, 'white') },
+      })
+      return
+    end
+
+    local ok_write, write_err = deck.fs.write_file_sync(target_path, content or '')
+    if not ok_write then
+      cb(text {
+        line { span('Failed to preview image', 'red') },
+        line { span(tostring(write_err), 'red') },
+        line { span(path, 'white') },
+      })
+      return
+    end
+
+    cb(deck.style.image(target_path))
+  end)
+  return true
+end
+
+function M:force_file_preview(entry, cb)
+  if not entry or not entry.handle then return end
+
+  local path = entry.handle.path or entry.handle.id
+  local provider_name = tostring(self.browser.provider and self.browser.provider.name or '')
+  local filename = path:match '[^/]+$' or path
+  if provider_name ~= 'local' and is_image_file(filename) and self:remote_image_preview(entry, cb) then return end
+
+  self:read_file_preview(entry, cb)
+end
+
+function M:file_preview(entry, cb)
+  local path = entry.handle.path or entry.handle.id
+  local provider_name = tostring(self.browser.provider and self.browser.provider.name or '')
+  local filename = path:match '[^/]+$' or path
+
+  if provider_name == 'local' and is_image_file(filename) then
+    self:next_preview_token()
+    cb(deck.style.image(path))
+    return
+  end
+
+  if provider_name ~= 'local' and not is_code_file(filename) then
+    self:next_preview_token()
+    cb(text {
+      line { span('Preview skipped', 'yellow') },
+      line { span('Non-code file on non-local provider', 'darkgray') },
+      line { span('Press P to force preview', 'darkgray') },
+      line { span(path, 'white') },
+    })
+    return
+  end
+
+  self:read_file_preview(entry, cb)
 end
 
 function M:info_preview(entry, cb)

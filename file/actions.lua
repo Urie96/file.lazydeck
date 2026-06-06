@@ -55,6 +55,22 @@ function M:toggle_hidden()
   return self.browser.config.show_hidden
 end
 
+function M:force_preview_hovered_entry()
+  local entry = deck.api.get_hovered()
+  if not entry or not entry.handle then
+    deck.notify 'Nothing to preview'
+    return
+  end
+  if entry.handle.is_dir then
+    deck.notify 'Cannot force preview a directory'
+    return
+  end
+
+  self.browser.previewer:force_file_preview(entry, function(preview)
+    deck.api.set_preview(deck.api.get_hovered_path(), preview)
+  end)
+end
+
 function M:invalidate_provider_caches(provider, handles)
   local seen = {}
   for _, handle in ipairs(handles or {}) do
@@ -121,6 +137,12 @@ function M:run_paste(clip, target_dir, done)
 
   if source_provider == target_provider then
     local fn = operation == 'move' and target_provider.move or target_provider.copy
+    if type(fn) ~= 'function' then
+      done(false, (operation == 'move' and 'Move' or 'Copy')
+        .. ' is not supported by provider '
+        .. tostring(target_provider.name or 'unknown'))
+      return
+    end
     return fn(target_provider, handles, target_dir, done)
   end
 
@@ -135,6 +157,10 @@ function M:run_paste(clip, target_dir, done)
 
   if target_provider.name == 'local' and type(source_provider.download) == 'function' then
     return source_provider:download({ provider = source_provider, handles = handles, operation = operation }, target_dir, done)
+  end
+
+  if type(target_provider.copy_from) == 'function' then
+    return target_provider:copy_from({ provider = source_provider, handles = handles, operation = operation }, target_dir, done)
   end
 
   done(false, 'cross-provider paste is not supported between '
@@ -251,6 +277,13 @@ local function prompt_create(self, kind)
         end
 
         local fn = is_dir and self.browser.provider.create_dir or self.browser.provider.create_file
+        if type(fn) ~= 'function' then
+          deck.notify((is_dir and 'Create directory' or 'Create file')
+            .. ' is not supported by provider '
+            .. tostring(self.browser.provider.name or 'unknown'))
+          return
+        end
+
         fn(self.browser.provider, target_dir, name, function(ok, err)
           if not ok then
             if is_dir then
@@ -323,6 +356,11 @@ function M:delete_hovered_entry()
     title = 'Delete File',
     prompt = prompt,
     on_confirm = function()
+      if type(self.browser.provider.remove) ~= 'function' then
+        deck.notify('Delete is not supported by provider ' .. tostring(self.browser.provider.name or 'unknown'))
+        return
+      end
+
       self.browser.provider:remove(source_handles, function(ok, err)
         deck.api.clear_selected()
         self:invalidate_parent_caches(source_handles)
