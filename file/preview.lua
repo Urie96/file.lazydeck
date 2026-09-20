@@ -242,30 +242,19 @@ function M:read_file_preview(entry, cb)
 end
 
 local function remote_image_cache_dir(provider, handle)
-  local home = os.getenv 'HOME'
-  if not home or home == '' then return nil, 'HOME is not set' end
-
   local source = tostring(provider.name or 'provider')
     .. '\0' .. tostring(handle.id or '')
     .. '\0' .. tostring(handle.path or '')
     .. '\0' .. tostring(handle.size or '')
   local key = deck.hash.md5(source)
-  return home .. '/.cache/lazydeck/remote-preview-images/' .. key
+  return deck.stdpath 'cache' .. '/remote-preview-images/' .. key
 end
 
 function M:remote_image_preview(entry, cb)
   local path = entry.handle.path or entry.handle.id
   if type(self.browser.provider.read_file) ~= 'function' then return false end
 
-  local cache_dir, cache_err = remote_image_cache_dir(self.browser.provider, entry.handle)
-  if not cache_dir then
-    cb(text {
-      line { span('Failed to preview image', 'red') },
-      line { span(tostring(cache_err), 'red') },
-      line { span(path, 'white') },
-    })
-    return true
-  end
+  local cache_dir = remote_image_cache_dir(self.browser.provider, entry.handle)
 
   local target_path = cache_dir .. '/' .. tostring(entry.handle.name or 'preview-image')
   local stat = deck.fs.stat(target_path)
